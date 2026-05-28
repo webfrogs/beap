@@ -1,0 +1,27 @@
+NAME=beap
+BINDIR=build
+GIT_HASH:=$(shell git rev-parse HEAD)
+BUILD_TIME:=$(shell date +'%F %T %Z')
+GOBUILD=CGO_ENABLED=0 go build -trimpath -ldflags '-w -s \
+	-X "beap/config.GitHash=$(GIT_HASH)" \
+	-X "beap/config.BuildTime=$(BUILD_TIME)" \
+	'
+
+.PHONY: all
+all:
+
+.PHONY: run
+run:
+	go run *.go
+
+.PHONY: ebpf
+ebpf:
+	bpftool btf dump file /sys/kernel/btf/vmlinux format c > hook/kern/bpf/vmlinux.h 
+	clang -O2 -g -Wno-pointer-sign -target bpfel \
+		-MD -MP \
+		-nostdinc -I ./hook/kern \
+		-c hook/kern/tproxy.c -o hook/kern/tproxy.o 
+
+.PHONY: linux_amd64
+linux_amd64:
+	GOARCH=amd64 GOOS=linux $(GOBUILD) -o $(BINDIR)/$(NAME)_$@
