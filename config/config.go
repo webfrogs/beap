@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 )
 
 var Data *ConfigData
@@ -27,8 +28,21 @@ func init() {
 func parseConfigFile() {
 	// TODO: implement
 	Data = &ConfigData{
-		TproxyPort:   "2089",
-		Sock5Addr:    "192.168.110.32:1091",
-		ProgramNames: []string{"agy"},
+		TproxyPort:   parsedCmdParam.tproxyPort,
+		Sock5Addr:    parsedCmdParam.sock5Addr,
+		ProgramNames: parseProgramNames(parsedCmdParam.programNames),
 	}
+}
+
+func parseProgramNames(value string) []string {
+	parts := strings.Split(value, ",")
+	names := make([]string, 0, len(parts))
+	for _, part := range parts {
+		name := strings.TrimSpace(part)
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
 }
