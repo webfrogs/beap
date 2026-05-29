@@ -8,7 +8,7 @@ GOBUILD=CGO_ENABLED=0 go build -trimpath -ldflags '-w -s \
 	'
 
 .PHONY: all
-all:
+all: linux_amd64 linux_arm64
 
 .PHONY: run
 run:
@@ -25,3 +25,7 @@ ebpf:
 .PHONY: linux_amd64
 linux_amd64:
 	GOARCH=amd64 GOOS=linux $(GOBUILD) -o $(BINDIR)/$(NAME)_$@
+
+.PHONY: linux_arm64
+linux_arm64:
+	GOARCH=arm64 GOOS=linux $(GOBUILD) -o $(BINDIR)/$(NAME)_$@

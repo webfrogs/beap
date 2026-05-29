@@ -129,7 +129,6 @@ Available flags:
 - IPv4 TCP only; UDP and IPv6 connect redirection are not implemented.
 - SOCKS5 username/password authentication is not implemented.
 - Process selection is based on command name, not PID or cgroup membership.
-- Configuration is currently hard-coded in `config/config.go`.
 - Existing connections are not affected; only new `connect(2)` calls can be
   redirected.
 
