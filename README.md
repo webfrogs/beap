@@ -26,7 +26,7 @@ Default values:
 
 ```text
 transparent proxy port: 2089
-SOCKS5 proxy:           192.168.110.32:1091
+SOCKS5 proxy:           127.0.0.1:1091
 proxied process names:  agy
 ```
 
@@ -71,6 +71,9 @@ sudo go run .
 
 ## Usage
 
+`beap` must run as root because it loads and attaches eBPF programs and opens a
+transparent proxy listener.
+
 Start `beap` as root:
 
 ```sh
@@ -80,6 +83,17 @@ sudo ./build/beap_linux_amd64
 Then start a process whose command name is listed in `ProgramNames` in
 `config/config.go`. New IPv4 TCP connections from that process will be routed
 through the configured SOCKS5 proxy.
+
+### Example: Antigravity CLI
+
+Some CLI tools cannot route their own traffic through a proxy with environment
+variables. For example, if Antigravity CLI traffic is created by a process named
+`agy`, run `beap` as root and forward `agy` TCP traffic to a local SOCKS5 proxy
+listening on port `1091`:
+
+```sh
+sudo beap --sock5-addr 127.0.0.1:1091 --program-names agy
+```
 
 Show build version information:
 
@@ -118,3 +132,7 @@ Available flags:
 - Configuration is currently hard-coded in `config/config.go`.
 - Existing connections are not affected; only new `connect(2)` calls can be
   redirected.
+
+## License
+
+MIT
