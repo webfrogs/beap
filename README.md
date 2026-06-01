@@ -92,7 +92,7 @@ variables. For example, if Antigravity CLI traffic is created by a process named
 listening on port `1091`:
 
 ```sh
-sudo beap --sock5-addr 127.0.0.1:1091 --program-names agy
+sudo beap --socks5-addr 127.0.0.1:1091 --program-names agy
 ```
 
 Show build version information:
@@ -105,7 +105,7 @@ Available flags:
 
 ```text
 -tproxy-port 2089             transparent proxy listen port
--sock5-addr 192.168.110.32:1091
+-socks5-addr 192.168.110.32:1091
                                SOCKS5 proxy address
 -program-names agy            comma-separated process names to proxy
 -f                            reserved for a future configuration file

@@ -30,7 +30,7 @@ func main() {
 
 func run() error {
 	log.Println("tproxy port: " + config.Data.TproxyPort)
-	log.Println("socks5 server: " + config.Data.Sock5Addr)
+	log.Println("socks5 server: " + config.Data.Socks5Addr)
 	log.Println("proxy programs: " + strings.Join(config.Data.ProgramNames, ","))
 
 	tproxyPort, err := strconv.ParseUint(config.Data.TproxyPort, 10, 16)
@@ -74,7 +74,7 @@ func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	proxy, err := newProxyServer(net.JoinHostPort("127.0.0.1", strconv.FormatUint(tproxyPort, 10)), config.Data.Sock5Addr)
+	proxy, err := newProxyServer(net.JoinHostPort("127.0.0.1", strconv.FormatUint(tproxyPort, 10)), config.Data.Socks5Addr)
 	if err != nil {
 		return fmt.Errorf("start tproxy service: %w", err)
 	}

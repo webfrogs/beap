@@ -11,7 +11,7 @@ var Data *ConfigData
 
 type ConfigData struct {
 	TproxyPort   string
-	Sock5Addr    string
+	Socks5Addr   string
 	ProgramNames []string
 }
 
@@ -29,7 +29,7 @@ func parseConfigFile() {
 	// TODO: implement
 	Data = &ConfigData{
 		TproxyPort:   parsedCmdParam.tproxyPort,
-		Sock5Addr:    parsedCmdParam.sock5Addr,
+		Socks5Addr:   parsedCmdParam.socks5Addr,
 		ProgramNames: parseProgramNames(parsedCmdParam.programNames),
 	}
 }

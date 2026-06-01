@@ -79,7 +79,7 @@ sudo ./build/beap_linux_amd64
 有些 CLI 工具无法通过环境变量代理自己的流量。例如，Antigravity CLI 的流量由名为 `agy` 的进程发起，以 root 身份运行 `beap`，并把 `agy` 的 TCP 流量转发到本地 `1091` 端口上的 SOCKS5 代理：
 
 ```sh
-sudo beap --sock5-addr 127.0.0.1:1091 --program-names agy
+sudo beap --socks5-addr 127.0.0.1:1091 --program-names agy
 ```
 
 显示构建版本信息：
@@ -92,7 +92,7 @@ sudo beap --sock5-addr 127.0.0.1:1091 --program-names agy
 
 ```text
 -tproxy-port 2089             透明代理监听端口
--sock5-addr 192.168.110.32:1091
+-socks5-addr 192.168.110.32:1091
                                SOCKS5 代理地址
 -program-names agy            需要代理的进程名，多个名称用逗号分隔
 -f                            预留给未来的配置文件功能
