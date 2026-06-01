@@ -16,7 +16,6 @@ run:
 
 .PHONY: ebpf
 ebpf:
-	bpftool btf dump file /sys/kernel/btf/vmlinux format c > hook/kern/bpf/vmlinux.h 
 	clang -O2 -g -Wno-pointer-sign -target bpfel \
 		-MD -MP \
 		-nostdinc -I ./hook/kern \
