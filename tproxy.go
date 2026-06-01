@@ -72,30 +72,26 @@ func (s *proxyServer) Close() error {
 }
 
 func (s *proxyServer) handle(client *net.TCPConn) {
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	_ = client.SetKeepAlive(true)
 	_ = client.SetKeepAlivePeriod(30 * time.Second)
 
 	remoteAddr := client.RemoteAddr()
 	localAddr := client.LocalAddr()
-	remoteIP := ""
-	if tcpAddr, ok := remoteAddr.(*net.TCPAddr); ok {
-		remoteIP = tcpAddr.IP.String()
-	}
 
 	dst, err := originalDst(client)
 	if err != nil {
-		log.Printf("tproxy request remote_ip=%s remote_addr=%s local_addr=%s original_dst_error=%v", remoteIP, remoteAddr, localAddr, err)
+		log.Printf("tproxy request remote_addr=%s local_addr=%s original_dst_error=%v", remoteAddr, localAddr, err)
 		return
 	}
-	log.Printf("tproxy request remote_ip=%s remote_addr=%s local_addr=%s original_dst=%s", remoteIP, remoteAddr, localAddr, dst)
+	log.Printf("tproxy request remote_addr=%s local_addr=%s original_dst=%s", remoteAddr, localAddr, dst)
 
 	upstream, err := socks5Connect(s.socksAddr, dst.String())
 	if err != nil {
 		log.Printf("socks connect %s through %s: %v", dst, s.socksAddr, err)
 		return
 	}
-	defer upstream.Close()
+	defer func() { _ = upstream.Close() }()
 
 	errc := make(chan error, 2)
 	go pipe(upstream, client, errc)
@@ -157,12 +153,4 @@ func originalDst4(fd int) (*net.TCPAddr, error) {
 	port := int(binary.BigEndian.Uint16(raw[2:4]))
 	ip := net.IPv4(raw[4], raw[5], raw[6], raw[7])
 	return &net.TCPAddr{IP: ip, Port: port}, nil
-}
-
-func parseTCPAddr(addr string) (*net.TCPAddr, error) {
-	tcp, err := net.ResolveTCPAddr("tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-	return tcp, nil
 }
