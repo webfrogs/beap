@@ -6,13 +6,16 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -29,14 +32,14 @@ func main() {
 }
 
 func run() error {
-	log.Println("tproxy port: " + config.Data.TproxyPort)
+	tproxyPort, err := checkRuntimeRequirements()
+	if err != nil {
+		return err
+	}
+
+	log.Printf("tproxy port: %d", config.Data.TproxyPort)
 	log.Println("socks5 server: " + config.Data.Socks5Addr)
 	log.Println("proxy programs: " + strings.Join(config.Data.ProgramNames, ","))
-
-	tproxyPort, err := strconv.ParseUint(config.Data.TproxyPort, 10, 16)
-	if err != nil || tproxyPort == 0 {
-		return fmt.Errorf("invalid tproxy port %q", config.Data.TproxyPort)
-	}
 
 	if err := rlimit.RemoveMemlock(); err != nil {
 		return fmt.Errorf("remove memlock limit: %w", err)
@@ -56,7 +59,7 @@ func run() error {
 	if err := writeProxyTGID(coll); err != nil {
 		return err
 	}
-	if err := writeTproxyPort(coll, uint16(tproxyPort)); err != nil {
+	if err := writeTproxyPort(coll, tproxyPort); err != nil {
 		return err
 	}
 	if err := writeProxyComms(coll, config.Data.ProgramNames); err != nil {
@@ -74,7 +77,7 @@ func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	proxy, err := newProxyServer(net.JoinHostPort("127.0.0.1", strconv.FormatUint(tproxyPort, 10)), config.Data.Socks5Addr)
+	proxy, err := newProxyServer(net.JoinHostPort("127.0.0.1", strconv.Itoa(int(tproxyPort))), config.Data.Socks5Addr)
 	if err != nil {
 		return fmt.Errorf("start tproxy service: %w", err)
 	}
@@ -107,6 +110,45 @@ func run() error {
 	case err := <-serveErr:
 		return fmt.Errorf("tproxy service stopped: %w", err)
 	}
+}
+
+func checkRuntimeRequirements() (uint16, error) {
+	if runtime.GOOS != "linux" {
+		return 0, fmt.Errorf("linux is required, current OS is %s", runtime.GOOS)
+	}
+	if os.Geteuid() != 0 {
+		return 0, fmt.Errorf("root privileges are required to load eBPF programs and enable transparent proxy sockets")
+	}
+	if _, err := os.Stat("/sys/fs/cgroup/cgroup.controllers"); err != nil {
+		return 0, fmt.Errorf("cgroup v2 is required at /sys/fs/cgroup: %w", err)
+	}
+
+	if err := checkSocks5Proxy(config.Data.Socks5Addr); err != nil {
+		return 0, err
+	}
+	return config.Data.TproxyPort, nil
+}
+
+func checkSocks5Proxy(addr string) error {
+	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
+	if err != nil {
+		return fmt.Errorf("SOCKS5 proxy %s is not reachable: %w", addr, err)
+	}
+	defer func() { _ = conn.Close() }()
+	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		return fmt.Errorf("set SOCKS5 proxy check deadline: %w", err)
+	}
+	if _, err := conn.Write([]byte{0x05, 0x01, 0x00}); err != nil {
+		return fmt.Errorf("check SOCKS5 proxy %s no-auth method: %w", addr, err)
+	}
+	reply := make([]byte, 2)
+	if _, err := io.ReadFull(conn, reply); err != nil {
+		return fmt.Errorf("read SOCKS5 proxy %s method reply: %w", addr, err)
+	}
+	if reply[0] != 0x05 || reply[1] != 0x00 {
+		return fmt.Errorf("SOCKS5 proxy %s does not accept no-auth method: % x", addr, reply)
+	}
+	return nil
 }
 
 func writeTproxyPort(coll *ebpf.Collection, port uint16) error {
