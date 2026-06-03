@@ -181,7 +181,7 @@ func writeProxyTGID(coll *ebpf.Collection) error {
 func currentHostTGID() uint32 {
 	data, err := os.ReadFile("/proc/self/status")
 	if err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
+		for line := range strings.SplitSeq(string(data), "\n") {
 			fields := strings.Fields(line)
 			if len(fields) >= 2 && fields[0] == "NSpid:" {
 				if pid, err := strconv.ParseUint(fields[1], 10, 32); err == nil && pid != 0 {
