@@ -72,6 +72,31 @@ sudo go run .
 sudo ./build/beap_linux_amd64
 ```
 
+### 使用 Docker 运行
+
+已发布的镜像地址：
+
+```text
+ghcr.io/webfrogs/beap:latest
+```
+
+运行时需要使用 host 网络、挂载 host cgroup，并提供 eBPF 所需权限：
+
+```sh
+docker run --rm -it \
+  --name beap \
+  --privileged \
+  --network host \
+  --pid host \
+  -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+  ghcr.io/webfrogs/beap:latest \
+    --socks5-addr 127.0.0.1:1091 \
+    --program-names agy
+```
+
+使用 `--network host` 时，`127.0.0.1:1091` 指的是 host 上监听的 SOCKS5
+代理。如果你的代理监听在其他地址，请修改 `--socks5-addr`。
+
 然后启动一个命令名包含在 `config/config.go` 的 `ProgramNames` 中的进程。该进程新建的 IPv4 TCP 连接会通过配置的 SOCKS5 代理转发。
 
 ### 示例：Antigravity CLI
@@ -80,6 +105,20 @@ sudo ./build/beap_linux_amd64
 
 ```sh
 sudo beap --socks5-addr 127.0.0.1:1091 --program-names agy
+```
+
+也可以使用 Docker 运行同样的 Antigravity 代理配置：
+
+```sh
+docker run -d \
+  --name beap \
+  --privileged \
+  --network host \
+  --pid host \
+  -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+  ghcr.io/webfrogs/beap:latest \
+    --socks5-addr 127.0.0.1:1091 \
+    --program-names agy
 ```
 
 显示构建版本信息：

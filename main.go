@@ -171,11 +171,28 @@ func writeProxyTGID(coll *ebpf.Collection) error {
 	}
 
 	key := uint32(0)
-	tgid := uint32(os.Getpid())
+	tgid := currentHostTGID()
 	if err := proxyTGID.Update(key, tgid, ebpf.UpdateAny); err != nil {
 		return fmt.Errorf("write proxy tgid %d to eBPF: %w", tgid, err)
 	}
 	return nil
+}
+
+func currentHostTGID() uint32 {
+	data, err := os.ReadFile("/proc/self/status")
+	if err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && fields[0] == "NSpid:" {
+				if pid, err := strconv.ParseUint(fields[1], 10, 32); err == nil && pid != 0 {
+					return uint32(pid)
+				}
+				break
+			}
+		}
+	}
+
+	return uint32(os.Getpid())
 }
 
 func writeProxyComms(coll *ebpf.Collection, names []string) error {

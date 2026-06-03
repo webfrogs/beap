@@ -80,6 +80,31 @@ Start `beap` as root:
 sudo ./build/beap_linux_amd64
 ```
 
+### Run with Docker
+
+The published image is:
+
+```text
+ghcr.io/webfrogs/beap:latest
+```
+
+Run it with host networking, host cgroup access, and enough privileges for eBPF:
+
+```sh
+docker run --rm -it \
+  --name beap \
+  --privileged \
+  --network host \
+  --pid host \
+  -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+  ghcr.io/webfrogs/beap:latest \
+    --socks5-addr 127.0.0.1:1091 \
+    --program-names agy
+```
+
+With `--network host`, `127.0.0.1:1091` refers to a SOCKS5 proxy listening on
+the host. Change `--socks5-addr` if your proxy listens on another address.
+
 Then start a process whose command name is listed in `ProgramNames` in
 `config/config.go`. New IPv4 TCP connections from that process will be routed
 through the configured SOCKS5 proxy.
@@ -93,6 +118,20 @@ listening on port `1091`:
 
 ```sh
 sudo beap --socks5-addr 127.0.0.1:1091 --program-names agy
+```
+
+Or run the same Antigravity proxy setup with Docker:
+
+```sh
+docker run -d \
+  --name beap \
+  --privileged \
+  --network host \
+  --pid host \
+  -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+  ghcr.io/webfrogs/beap:latest \
+    --socks5-addr 127.0.0.1:1091 \
+    --program-names agy
 ```
 
 Show build version information:
