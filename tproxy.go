@@ -77,14 +77,13 @@ func (s *proxyServer) handle(client *net.TCPConn) {
 	_ = client.SetKeepAlivePeriod(30 * time.Second)
 
 	remoteAddr := client.RemoteAddr()
-	localAddr := client.LocalAddr()
 
 	dst, err := originalDst(client)
 	if err != nil {
-		log.Printf("tproxy request remote_addr=%s local_addr=%s original_dst_error=%v", remoteAddr, localAddr, err)
+		log.Printf("tproxy request %s --> ? error=%v", remoteAddr, err)
 		return
 	}
-	log.Printf("tproxy request remote_addr=%s local_addr=%s original_dst=%s", remoteAddr, localAddr, dst)
+	log.Printf("tproxy request %s --> %s", remoteAddr, dst)
 
 	upstream, err := socks5Connect(s.socksAddr, dst.String())
 	if err != nil {
