@@ -83,8 +83,9 @@ ghcr.io/webfrogs/beap:latest
 运行时需要使用 host 网络、挂载 host cgroup，并提供 eBPF 所需权限：
 
 ```sh
-docker run --pull=always --rm -it \
+docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
   --name beap \
+  --restart=always \
   --privileged \
   --network host \
   --pid host \
@@ -110,8 +111,9 @@ sudo beap --socks5-addr 127.0.0.1:1091 --program-names agy
 也可以使用 Docker 运行同样的 Antigravity 代理配置：
 
 ```sh
-docker run --pull=always -d \
+docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
   --name beap \
+  --restart=always \
   --privileged \
   --network host \
   --pid host \

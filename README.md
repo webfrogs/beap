@@ -91,8 +91,9 @@ ghcr.io/webfrogs/beap:latest
 Run it with host networking, host cgroup access, and enough privileges for eBPF:
 
 ```sh
-docker run --pull=always --rm -it \
+docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
   --name beap \
+  --restart=always \
   --privileged \
   --network host \
   --pid host \
@@ -123,8 +124,9 @@ sudo beap --socks5-addr 127.0.0.1:1091 --program-names agy
 Or run the same Antigravity proxy setup with Docker:
 
 ```sh
-docker run --pull=always -d \
+docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
   --name beap \
+  --restart=always \
   --privileged \
   --network host \
   --pid host \
