@@ -6,7 +6,6 @@ import (
 	"os"
 	"runtime"
 	"strconv"
-	"strings"
 )
 
 var Data *ConfigData
@@ -35,7 +34,7 @@ func parseConfigFile() {
 	// TODO: implement
 	Data = &ConfigData{
 		Socks5Addr:   parsedCmdParam.socks5Addr,
-		ProgramNames: parseProgramNames(parsedCmdParam.programNames),
+		ProgramNames: parsedCmdParam.programNames.values,
 	}
 }
 
@@ -55,6 +54,9 @@ func validateConfigData(data *ConfigData) error {
 		return fmt.Errorf("at least one proxy process name is required")
 	}
 	for _, name := range data.ProgramNames {
+		if name == "" {
+			return fmt.Errorf("process name cannot be empty")
+		}
 		if len(name) > 15 {
 			return fmt.Errorf("process name %q is too long for task comm, max 15 bytes", name)
 		}
@@ -83,17 +85,4 @@ func validatePort(name, value string) (uint16, error) {
 		return 0, fmt.Errorf("invalid %s %q", name, value)
 	}
 	return uint16(port), nil
-}
-
-func parseProgramNames(value string) []string {
-	parts := strings.Split(value, ",")
-	names := make([]string, 0, len(parts))
-	for _, part := range parts {
-		name := strings.TrimSpace(part)
-		if name == "" {
-			continue
-		}
-		names = append(names, name)
-	}
-	return names
 }

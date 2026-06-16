@@ -22,10 +22,10 @@
 ```text
 透明代理端口:      2089
 SOCKS5 代理:       127.0.0.1:1091
-被代理进程名:      agy
 ```
 
-进程名会和 `task comm` 匹配，而 `task comm` 最多只有 15 字节。
+必须通过 `--program` 提供至少一个被代理进程名。进程名会和 `task comm`
+匹配，而 `task comm` 最多只有 15 字节。
 
 ## 要求
 
@@ -92,20 +92,23 @@ docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
   -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
   ghcr.io/webfrogs/beap:latest \
     --socks5-addr 127.0.0.1:1091 \
-    --program-names agy
+    --program agy \
+    --program curl
 ```
 
 使用 `--network host` 时，`127.0.0.1:1091` 指的是 host 上监听的 SOCKS5
 代理。如果你的代理监听在其他地址，请修改 `--socks5-addr`。
+每个需要代理的命令名传入一次 `--program`。必须至少传入一个
+`--program`。
 
 然后启动一个命令名包含在 `config/config.go` 的 `ProgramNames` 中的进程。该进程新建的 IPv4 TCP 连接会通过配置的 SOCKS5 代理转发。
 
 ### 示例：Antigravity CLI
 
-有些 CLI 工具无法通过环境变量代理自己的流量。例如，Antigravity CLI 的流量由名为 `agy` 的进程发起，以 root 身份运行 `beap`，并把 `agy` 的 TCP 流量转发到本地 `1091` 端口上的 SOCKS5 代理：
+有些 CLI 工具无法通过环境变量代理自己的流量。例如，Antigravity CLI 的流量由名为 `agy` 的进程发起，以 root 身份运行 `beap`，并把 `agy` 的 TCP 流量转发到本地 `1091` 端口上的 SOCKS5 代理。需要代理更多命令名时，重复传入 `--program`：
 
 ```sh
-sudo beap --socks5-addr 127.0.0.1:1091 --program-names agy
+sudo beap --socks5-addr 127.0.0.1:1091 --program agy --program curl
 ```
 
 也可以使用 Docker 运行同样的 Antigravity 代理配置：
@@ -120,7 +123,8 @@ docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
   -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
   ghcr.io/webfrogs/beap:latest \
     --socks5-addr 127.0.0.1:1091 \
-    --program-names agy
+    --program agy \
+    --program curl
 ```
 
 显示构建版本信息：
@@ -135,7 +139,7 @@ docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
 -tproxy-port 2089             透明代理监听端口
 -socks5-addr 192.168.110.32:1091
                                SOCKS5 代理地址
--program-names agy            需要代理的进程名，多个名称用逗号分隔
+-program agy                  需要代理的进程名；代理多个程序时重复传入
 -f                            预留给未来的配置文件功能
 -v                            显示构建版本信息
 ```

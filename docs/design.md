@@ -39,8 +39,9 @@ Process selection is based on `task comm`, the Linux task command name returned
 by `bpf_get_current_comm()`. User space writes the configured names into the
 `map_proxy_comms` eBPF map before attaching the programs.
 
-The default name list comes from `-program-names`, whose default is `agy`.
-Names are comma-separated and each name must fit in `TASK_COMM_LEN`, so the
+The name list comes from `-program`, which must be provided at least once. Pass
+`-program` multiple times to proxy multiple programs, for example
+`-program agy -program curl`. Each name must fit in `TASK_COMM_LEN`, so the
 maximum accepted process name length is 15 bytes.
 
 The proxy process itself is excluded by TGID. On startup, user space writes its
