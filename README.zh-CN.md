@@ -105,10 +105,10 @@ docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
 
 ### 示例：Antigravity CLI
 
-有些 CLI 工具无法通过环境变量代理自己的流量。例如，Antigravity CLI 的流量由名为 `agy` 的进程发起，以 root 身份运行 `beap`，并把 `agy` 的 TCP 流量转发到本地 `1091` 端口上的 SOCKS5 代理。需要代理更多命令名时，重复传入 `--program`：
+有些 CLI 工具无法通过环境变量代理自己的流量。例如，Antigravity CLI 的流量由名为 `agy` 的进程发起，以 root 身份运行 `beap`，并把 `agy` 的 TCP 流量转发到本地 `1091` 端口上的 SOCKS5 代理。使用 `--program agy` 代理 Antigravity CLI 进程：
 
 ```sh
-sudo beap --socks5-addr 127.0.0.1:1091 --program agy --program curl
+sudo beap --socks5-addr 127.0.0.1:1091 --program agy
 ```
 
 也可以使用 Docker 运行同样的 Antigravity 代理配置：
@@ -123,8 +123,7 @@ docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
   -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
   ghcr.io/webfrogs/beap:latest \
     --socks5-addr 127.0.0.1:1091 \
-    --program agy \
-    --program curl
+    --program agy
 ```
 
 显示构建版本信息：

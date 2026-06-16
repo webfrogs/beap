@@ -118,10 +118,11 @@ through the configured SOCKS5 proxy.
 Some CLI tools cannot route their own traffic through a proxy with environment
 variables. For example, if Antigravity CLI traffic is created by a process named
 `agy`, run `beap` as root and forward `agy` TCP traffic to a local SOCKS5 proxy
-listening on port `1091`. Repeat `--program` to proxy additional command names:
+listening on port `1091`. Use `--program agy` to proxy the Antigravity CLI
+process:
 
 ```sh
-sudo beap --socks5-addr 127.0.0.1:1091 --program agy --program curl
+sudo beap --socks5-addr 127.0.0.1:1091 --program agy
 ```
 
 Or run the same Antigravity proxy setup with Docker:
@@ -136,8 +137,7 @@ docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
   -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
   ghcr.io/webfrogs/beap:latest \
     --socks5-addr 127.0.0.1:1091 \
-    --program agy \
-    --program curl
+    --program agy
 ```
 
 Show build version information:
