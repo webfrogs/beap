@@ -2,6 +2,7 @@ package main
 
 import (
 	"beap/config"
+	"beap/internal/dnslog"
 	"bytes"
 	"context"
 	_ "embed"
@@ -53,6 +54,13 @@ func run() error {
 	}
 
 	// Do not load optional programs (or require their helper support) when off.
+	if !config.Data.DNSLog {
+		delete(spec.Programs, "cg_dns_log_egress")
+		delete(spec.Programs, "cg_dns_log_ingress")
+		delete(spec.Maps, "map_dns_events")
+		delete(spec.Maps, "map_dns_scratch")
+		delete(spec.Maps, "map_dns_log_drops")
+	}
 	if !config.Data.DNSAddr.IsValid() {
 		delete(spec.Programs, "cg_dns_connect4")
 		delete(spec.Programs, "cg_dns_sendmsg4")
@@ -72,6 +80,13 @@ func run() error {
 			return err
 		}
 		log.Printf("UDP DNS redirect: %s", config.Data.DNSAddr)
+	}
+	if config.Data.DNSLog {
+		logger, err := dnslog.Start(coll.Maps["map_dns_events"], coll.Maps["map_dns_log_drops"], config.Data.DNSAddr.String())
+		if err != nil {
+			return fmt.Errorf("start DNS logger: %w", err)
+		}
+		defer logger.Close()
 	}
 	if err := writeProxyTGID(coll); err != nil {
 		return err
@@ -268,6 +283,15 @@ func attachTproxyPrograms(coll *ebpf.Collection, cgroupPath string) ([]link.Link
 			{name: "cg_dns_sendmsg4", attach: ebpf.AttachCGroupUDP4Sendmsg},
 			{name: "cg_dns_recvmsg4", attach: ebpf.AttachCGroupUDP4Recvmsg},
 			{name: "cg_dns_getpeername4", attach: ebpf.AttachCgroupInet4GetPeername},
+		}...)
+	}
+	if config.Data.DNSLog {
+		programs = append(programs, []struct {
+			name   string
+			attach ebpf.AttachType
+		}{
+			{name: "cg_dns_log_egress", attach: ebpf.AttachCGroupInetEgress},
+			{name: "cg_dns_log_ingress", attach: ebpf.AttachCGroupInetIngress},
 		}...)
 	}
 	links := make([]link.Link, 0, len(programs))

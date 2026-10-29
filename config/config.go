@@ -15,6 +15,7 @@ type ConfigData struct {
 	TproxyPort   uint16
 	Socks5Addr   string
 	DNSAddr      netip.AddrPort
+	DNSLog       bool
 	ProgramNames []string
 }
 
@@ -36,6 +37,7 @@ func parseConfigFile() {
 	// TODO: implement
 	Data = &ConfigData{
 		Socks5Addr:   parsedCmdParam.socks5Addr,
+		DNSLog:       parsedCmdParam.dnsLog,
 		ProgramNames: parsedCmdParam.programNames.values,
 	}
 }
@@ -54,6 +56,9 @@ func validateConfigData(data *ConfigData) error {
 		return err
 	}
 	data.DNSAddr = dnsAddr
+	if data.DNSLog && !data.DNSAddr.IsValid() {
+		return fmt.Errorf("--dns-log requires --dns-addr")
+	}
 	if err := validateSocks5Addr(data.Socks5Addr); err != nil {
 		return err
 	}

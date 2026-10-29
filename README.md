@@ -113,6 +113,57 @@ Then start a process whose command name is listed in `ProgramNames` in
 `config/config.go`. New IPv4 TCP connections from that process will be routed
 through the configured SOCKS5 proxy.
 
+### Optional UDP DNS Redirection
+
+Use `--dns-addr IPv4:port` to specify a UDP DNS service:
+
+```sh
+sudo beap --program agy --socks5-addr 127.0.0.1:1091 --dns-addr 127.0.0.1:1053
+```
+
+When enabled, IPv4 UDP/53 requests from processes matching `--program`, including
+requests to loopback addresses, are redirected to the specified service. Reply
+source addresses and `getpeername()` results are restored for the application.
+UDP `connect()` and `sendto()` / `sendmsg()` are supported; the proxy process is
+excluded. The target must be a literal IPv4 address and a nonzero port serving UDP
+DNS; hostnames and IPv6 addresses are not accepted. Requests go directly to the
+specified service, without SOCKS5 or conversion to DNS over TCP. Omitting the
+option preserves existing behavior and skips loading additional DNS hooks and
+maps.
+
+DNS logging is disabled by default. Add `--dns-log` alongside `--dns-addr` to
+write redirected UDP DNS queries and responses to the standard log (stderr),
+including the socket identifier, original DNS endpoint,
+configured resolver, query ID, names, record types, response status, and answer
+values with TTLs. Using `--dns-log` without `--dns-addr` is a configuration error.
+When logging is disabled, log capture hooks and maps are not loaded. For example:
+
+```sh
+sudo beap --program agy --dns-addr 127.0.0.1:1053 --dns-log
+```
+
+```text
+dns receive socket=42 original=8.8.8.8:53 resolver=127.0.0.1:1053 kind=response id=123 rcode=RCodeSuccess truncated=false questions="example.com. TypeA" answers="example.com. TypeA ttl=60 93.184.216.34"
+```
+
+Read-only cgroup packet hooks and a ring buffer capture the logs without changing
+forwarding behavior. Only IPv4 UDP DNS redirected by this tool is logged; TCP
+DNS, direct fallback traffic, and queries from the proxy process are excluded.
+Capture is limited to 4096 bytes per message; larger messages are marked
+`capture_truncated=true`, and invalid messages are marked `malformed`. Logging is
+best effort, with lost events reported as `dns log dropped=...`. Queries without
+a response do not produce a resolution result log.
+
+One original DNS endpoint is pinned per socket, with automatic cleanup on socket
+close. Requests to other DNS endpoints on that socket pass through unchanged to
+avoid misattributing concurrent or delayed responses. Requests already addressed
+to the configured service pass through; do not mix those with redirected requests
+on the same socket, since address hooks cannot distinguish their replies.
+
+If an application delegates resolution to a separate resolver process over IPC,
+`--program` must match the process that actually sends UDP requests. IPv6 DNS, DoH
+and DoT are not handled.
+
 ### Example: Antigravity CLI
 
 Some CLI tools cannot route their own traffic through a proxy with environment
@@ -153,6 +204,8 @@ Available flags:
 -socks5-addr 192.168.110.32:1091
                                SOCKS5 proxy address
 -program agy                  process name to proxy; repeat for multiple programs
+-dns-addr 127.0.0.1:1053       optional IPv4 UDP DNS redirect address; disabled by default
+-dns-log                      log UDP DNS queries and responses; disabled by default, requires -dns-addr
 -f                            reserved for a future configuration file
 -v                            show build version information
 ```
@@ -171,7 +224,10 @@ Available flags:
 
 ## Limitations
 
-- General proxying supports IPv4 TCP only; general UDP and IPv6 redirection are not implemented. Optional IPv4 UDP DNS redirection is described below.
+- General proxying supports IPv4 TCP only; general UDP and IPv6 redirection are
+  not implemented.
+- Optional DNS redirection supports IPv4 UDP/53 only; TCP DNS traffic continues
+  through the existing TCP proxy path.
 - SOCKS5 username/password authentication is not implemented.
 - Process selection is based on command name, not PID or cgroup membership.
 - Existing connections are not affected; only new `connect(2)` calls can be
@@ -180,33 +236,3 @@ Available flags:
 ## License
 
 MIT
-
-## Optional UDP DNS redirection
-
-```sh
-sudo beap --program agy --socks5-addr 127.0.0.1:1091 --dns-addr 127.0.0.1:1053
-```
-
-`--dns-addr` accepts a literal unicast IPv4 address and a nonzero port serving
-UDP DNS. It redirects selected processes' IPv4 UDP/53 requests, including
-loopback requests, using connect/sendmsg hooks and restores reply addresses and
-`getpeername()` results. The proxy process is excluded. These requests go directly
-to the configured DNS service; they do not use SOCKS5 or DNS over TCP.
-Omitting the option preserves existing behavior and skips loading additional DNS
-programs and maps. TCP DNS continues through the existing TCP proxy path.
-
-One original DNS endpoint is pinned per socket, with automatic cleanup on socket
-close. Requests to other DNS endpoints on that socket pass through unchanged to
-avoid misattributing concurrent or delayed responses. Requests already addressed
-to the configured service pass through; do not mix those with redirected requests
-on the same socket, since address hooks cannot distinguish their replies.
-If an application delegates resolution over IPC, process selection must match the
-resolver that actually sends UDP requests. IPv6 DNS, DoH and DoT are not handled.
-
-Kernel integration tests (root and writable cgroup v2 required):
-
-```sh
-sudo go test ./tests -run TestDNSRedirect -v
-```
-
-The test attaches hooks only to a temporary cgroup containing the test process.

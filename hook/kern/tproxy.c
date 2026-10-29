@@ -46,6 +46,37 @@ struct {
   __type(value, struct original_dst);
 } map_dns_original SEC(".maps");
 
+#define DNS_CAPTURE_SIZE 4096
+
+struct dns_event {
+  __u64 cookie;
+  struct original_dst original;
+  __u32 direction; // 0: egress, 1: ingress
+  __u32 wire_length;
+  __u8 payload[DNS_CAPTURE_SIZE];
+};
+
+struct {
+  __uint(type, BPF_MAP_TYPE_RINGBUF);
+  __uint(max_entries, 1 << 20);
+} map_dns_events SEC(".maps");
+
+// Avoid a large stack allocation; output only the initialized portion.
+struct {
+  __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+  __type(key, __u32);
+  __type(value, struct dns_event);
+  __uint(max_entries, 1);
+} map_dns_scratch SEC(".maps");
+
+// Best-effort logging must never prevent DNS traffic. Count lost events.
+struct {
+  __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+  __type(key, __u32);
+  __type(value, __u64);
+  __uint(max_entries, 1);
+} map_dns_log_drops SEC(".maps");
+
 // 用户态写入当前透明代理监听端口。
 // key 0 -> tproxy port
 struct {
@@ -188,6 +219,82 @@ int cg_dns_recvmsg4(struct bpf_sock_addr *ctx) {
 SEC("cgroup/getpeername4")
 int cg_dns_getpeername4(struct bpf_sock_addr *ctx) {
   return restore_dns(ctx);
+}
+
+static __always_inline int log_dns_packet(struct __sk_buff *skb,
+                                          __u32 direction) {
+  struct bpf_sock *sk = skb->sk;
+  if (!sk) {
+    return 1;
+  }
+  sk = bpf_sk_fullsock(sk);
+  if (!sk) {
+    return 1;
+  }
+  struct original_dst *original =
+      bpf_sk_storage_get(&map_dns_original, sk, 0, 0);
+  if (!original) {
+    return 1;
+  }
+  __u32 key = 0;
+  struct original_dst *target = bpf_map_lookup_elem(&map_dns_target, &key);
+  if (!target || !target->port) {
+    return 1;
+  }
+  // cgroup/skb offsets start at the IP header, without an Ethernet header.
+  struct iphdr ip;
+  if (bpf_skb_load_bytes(skb, 0, &ip, sizeof(ip)) || ip.version != 4 ||
+      ip.protocol != IPPROTO_UDP || ip.ihl < 5 ||
+      (ip.frag_off & bpf_htons(0x3fff))) {
+    return 1;
+  }
+  __u32 ip_length = ip.ihl * 4;
+  struct udphdr udp;
+  if (bpf_skb_load_bytes(skb, ip_length, &udp, sizeof(udp))) {
+    return 1;
+  }
+  if ((!direction && (ip.daddr != target->ip || udp.dest != target->port)) ||
+      (direction && (ip.saddr != target->ip || udp.source != target->port))) {
+    return 1;
+  }
+  __u32 udp_length = bpf_ntohs(udp.len);
+  if (udp_length < sizeof(udp) + 12 ||
+      ip_length + udp_length > bpf_ntohs(ip.tot_len) ||
+      ip_length + udp_length > skb->len) {
+    return 1;
+  }
+  struct dns_event *event = bpf_map_lookup_elem(&map_dns_scratch, &key);
+  if (!event) {
+    return 1;
+  }
+  event->cookie = bpf_get_socket_cookie(skb);
+  event->original = *original;
+  event->direction = direction;
+  event->wire_length = udp_length - sizeof(udp);
+  __u32 length = event->wire_length;
+  if (length > DNS_CAPTURE_SIZE) {
+    length = DNS_CAPTURE_SIZE;
+  }
+  if (bpf_skb_load_bytes(skb, ip_length + sizeof(udp), event->payload, length) ||
+      bpf_ringbuf_output(&map_dns_events, event,
+                        __builtin_offsetof(struct dns_event, payload) + length,
+                        0)) {
+    __u64 *drops = bpf_map_lookup_elem(&map_dns_log_drops, &key);
+    if (drops) {
+      __sync_fetch_and_add(drops, 1);
+    }
+  }
+  return 1;
+}
+
+SEC("cgroup_skb/egress")
+int cg_dns_log_egress(struct __sk_buff *skb) {
+  return log_dns_packet(skb, 0);
+}
+
+SEC("cgroup_skb/ingress")
+int cg_dns_log_ingress(struct __sk_buff *skb) {
+  return log_dns_packet(skb, 1);
 }
 
 SEC("cgroup/connect4")

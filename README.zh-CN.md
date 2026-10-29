@@ -118,6 +118,27 @@ sudo beap --program agy --socks5-addr 127.0.0.1:1091 --dns-addr 127.0.0.1:1053
 此流量直接发送给指定服务，不经过 SOCKS5，也不会转换成 DNS over TCP。
 未配置该参数时，不加载额外 DNS hook 和 map，保留现有行为。
 
+DNS 日志默认关闭。在配置 `--dns-addr` 的同时添加 `--dns-log`，即可将
+被重定向的 UDP DNS 查询和响应写入标准日志
+（stderr），记录 socket 标识、原始 DNS 地址、指定 DNS 服务、查询 ID、域名、
+记录类型、响应状态，以及响应中的记录值和 TTL。单独使用 `--dns-log`
+而未配置 `--dns-addr` 会报配置错误。未开启日志时，不加载日志采集 hook
+和 map。例如：
+
+```sh
+sudo beap --program agy --dns-addr 127.0.0.1:1053 --dns-log
+```
+
+```text
+dns receive socket=42 original=8.8.8.8:53 resolver=127.0.0.1:1053 kind=response id=123 rcode=RCodeSuccess truncated=false questions="example.com. TypeA" answers="example.com. TypeA ttl=60 93.184.216.34"
+```
+
+日志通过只读的 cgroup 收发包 hook 和 ring buffer 采集，不改变转发行为。
+仅记录本工具重定向的 IPv4 UDP DNS，不记录 TCP DNS、直连回退或代理进程的
+查询。单条报文最多采集 4096 字节，超出时记录 `capture_truncated=true`；
+格式异常时记录 `malformed`。日志为尽力采集，丢失事件会汇总输出
+`dns log dropped=...`；未收到响应的查询不会生成解析结果日志。
+
 每个 socket 固定记录一个原始 DNS 目标，随 socket 关闭自动回收。如果同一
 socket 向其他 DNS 地址发送请求，这些请求保持直连，以避免并发或延迟响应
 被错误归属。原本就发往指定服务的请求保持直连；不要在同一 socket 中混合
@@ -163,6 +184,7 @@ docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
                                SOCKS5 代理地址
 -program agy                  需要代理的进程名；代理多个程序时重复传入
 -dns-addr 127.0.0.1:1053       可选的 IPv4 UDP DNS 重定向地址；默认禁用
+-dns-log                      记录 UDP DNS 查询和响应；默认关闭，需配置 -dns-addr
 -f                            预留给未来的配置文件功能
 -v                            显示构建版本信息
 ```

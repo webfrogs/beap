@@ -12,6 +12,7 @@ type cmdParam struct {
 	tproxyPort   string
 	socks5Addr   string
 	dnsAddr      string
+	dnsLog       bool
 	programNames programNamesFlag
 }
 
@@ -23,6 +24,7 @@ func parseCmdFlag() {
 	flag.StringVar(&parsedCmdParam.tproxyPort, "tproxy-port", "2089", "transparent proxy listen port")
 	flag.StringVar(&parsedCmdParam.socks5Addr, "socks5-addr", "127.0.0.1:1091", "SOCKS5 proxy address")
 	flag.StringVar(&parsedCmdParam.dnsAddr, "dns-addr", "", "optional UDP DNS redirect address (IPv4:port)")
+	flag.BoolVar(&parsedCmdParam.dnsLog, "dns-log", false, "log redirected UDP DNS queries and responses; requires --dns-addr")
 	flag.Var(&parsedCmdParam.programNames, "program", "program name to proxy; repeat to proxy multiple programs")
 
 	flag.Parse()
