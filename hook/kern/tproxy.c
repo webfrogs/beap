@@ -7,6 +7,7 @@
 #define AF_INET 2
 #define EINVAL 22
 #define IPPROTO_TCP 6
+#define IPPROTO_UDP 17
 #define TASK_COMM_LEN 16
 
 #ifndef __always_inline
@@ -26,6 +27,24 @@ struct client_addr {
   __u32 ip;
   __u32 port;
 };
+
+// Network byte order, matching bpf_sock_addr fields. Port zero disables DNS.
+struct {
+  __uint(type, BPF_MAP_TYPE_ARRAY);
+  __type(key, __u32);
+  __type(value, struct original_dst);
+  __uint(max_entries, 1);
+} map_dns_target SEC(".maps");
+
+// Socket storage is reclaimed automatically when the socket is destroyed.
+// Pin one original DNS endpoint per socket: overwriting it would misattribute
+// delayed replies when sendto() addresses multiple resolvers on one socket.
+struct {
+  __uint(type, BPF_MAP_TYPE_SK_STORAGE);
+  __uint(map_flags, BPF_F_NO_PREALLOC);
+  __type(key, int);
+  __type(value, struct original_dst);
+} map_dns_original SEC(".maps");
 
 // 用户态写入当前透明代理监听端口。
 // key 0 -> tproxy port
@@ -97,6 +116,78 @@ static __always_inline __u16 get_tproxy_port(void) {
     return 0;
   }
   return *port;
+}
+
+static __always_inline int redirect_dns(struct bpf_sock_addr *ctx) {
+  if (!ctx->sk || ctx->user_port != bpf_htons(53) ||
+      is_proxy_process() || !is_allowed_process()) {
+    return 1;
+  }
+  __u32 key = 0;
+  struct original_dst *target = bpf_map_lookup_elem(&map_dns_target, &key);
+  if (!target || !target->port) {
+    return 1;
+  }
+  // No translation is necessary when the requested endpoint is already target.
+  if (ctx->user_ip4 == target->ip && ctx->user_port == target->port) {
+    return 1;
+  }
+  struct original_dst initial = {
+      .ip = ctx->user_ip4, .port = ctx->user_port,
+  };
+  struct original_dst *original = bpf_sk_storage_get(
+      &map_dns_original, ctx->sk, &initial, BPF_SK_STORAGE_GET_F_CREATE);
+  if (!original || original->ip != ctx->user_ip4 ||
+      original->port != ctx->user_port) {
+    return 1;
+  }
+  ctx->user_ip4 = target->ip;
+  ctx->user_port = target->port;
+  return 1;
+}
+
+// Receive hooks run in the receiving task, which need not be the sending task.
+// Use socket storage rather than comm to identify replies that need restoring.
+static __always_inline int restore_dns(struct bpf_sock_addr *ctx) {
+  if (!ctx->sk || ctx->protocol != IPPROTO_UDP) {
+    return 1;
+  }
+  __u32 key = 0;
+  struct original_dst *target = bpf_map_lookup_elem(&map_dns_target, &key);
+  if (!target || !target->port || ctx->user_ip4 != target->ip ||
+      ctx->user_port != target->port) {
+    return 1;
+  }
+  struct original_dst *original =
+      bpf_sk_storage_get(&map_dns_original, ctx->sk, 0, 0);
+  if (original) {
+    ctx->user_ip4 = original->ip;
+    ctx->user_port = original->port;
+  }
+  return 1;
+}
+
+SEC("cgroup/connect4")
+int cg_dns_connect4(struct bpf_sock_addr *ctx) {
+  if (ctx->protocol != IPPROTO_UDP) {
+    return 1;
+  }
+  return redirect_dns(ctx);
+}
+
+SEC("cgroup/sendmsg4")
+int cg_dns_sendmsg4(struct bpf_sock_addr *ctx) {
+  return redirect_dns(ctx);
+}
+
+SEC("cgroup/recvmsg4")
+int cg_dns_recvmsg4(struct bpf_sock_addr *ctx) {
+  return restore_dns(ctx);
+}
+
+SEC("cgroup/getpeername4")
+int cg_dns_getpeername4(struct bpf_sock_addr *ctx) {
+  return restore_dns(ctx);
 }
 
 SEC("cgroup/connect4")

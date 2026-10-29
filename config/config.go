@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"runtime"
 	"strconv"
@@ -13,6 +14,7 @@ var Data *ConfigData
 type ConfigData struct {
 	TproxyPort   uint16
 	Socks5Addr   string
+	DNSAddr      netip.AddrPort
 	ProgramNames []string
 }
 
@@ -47,6 +49,11 @@ func validateConfigData(data *ConfigData) error {
 		return err
 	}
 	data.TproxyPort = tproxyPort
+	dnsAddr, err := parseDNSAddr(parsedCmdParam.dnsAddr)
+	if err != nil {
+		return err
+	}
+	data.DNSAddr = dnsAddr
 	if err := validateSocks5Addr(data.Socks5Addr); err != nil {
 		return err
 	}
@@ -85,4 +92,19 @@ func validatePort(name, value string) (uint16, error) {
 		return 0, fmt.Errorf("invalid %s %q", name, value)
 	}
 	return uint16(port), nil
+}
+
+// An invalid AddrPort means DNS redirection is disabled. Require a literal IPv4
+// address so configuration never triggers DNS resolution before the hooks load.
+func parseDNSAddr(value string) (netip.AddrPort, error) {
+	if value == "" {
+		return netip.AddrPort{}, nil
+	}
+	addr, err := netip.ParseAddrPort(value)
+	if err != nil || !addr.Addr().Is4() || addr.Addr().IsUnspecified() ||
+		addr.Addr().IsMulticast() || addr.Port() == 0 ||
+		addr.Addr() == netip.AddrFrom4([4]byte{255, 255, 255, 255}) {
+		return netip.AddrPort{}, fmt.Errorf("invalid DNS redirect address %q: expected unicast IPv4:port with a nonzero port", value)
+	}
+	return addr, nil
 }

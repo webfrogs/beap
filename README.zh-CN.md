@@ -103,6 +103,29 @@ docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
 
 然后启动一个命令名包含在 `config/config.go` 的 `ProgramNames` 中的进程。该进程新建的 IPv4 TCP 连接会通过配置的 SOCKS5 代理转发。
 
+### 可选 UDP DNS 重定向
+
+通过 `--dns-addr IPv4:端口` 指定 UDP DNS 服务：
+
+```sh
+sudo beap --program agy --socks5-addr 127.0.0.1:1091 --dns-addr 127.0.0.1:1053
+```
+
+启用后，匹配 `--program` 的进程发往 IPv4 UDP/53 的请求（包括 loopback
+地址）会重定向到指定服务，同时恢复应用看到的响应来源和 `getpeername()`
+结果。支持 UDP `connect()` 和 `sendto()` / `sendmsg()`；代理自身不被重定向。
+目标必须是提供 UDP DNS 的 IPv4 地址和非零端口，不接受域名或 IPv6。
+此流量直接发送给指定服务，不经过 SOCKS5，也不会转换成 DNS over TCP。
+未配置该参数时，不加载额外 DNS hook 和 map，保留现有行为。
+
+每个 socket 固定记录一个原始 DNS 目标，随 socket 关闭自动回收。如果同一
+socket 向其他 DNS 地址发送请求，这些请求保持直连，以避免并发或延迟响应
+被错误归属。原本就发往指定服务的请求保持直连；不要在同一 socket 中混合
+查询指定服务和被重定向的服务，否则仅凭地址 hook 无法区分它们的响应。
+
+如果应用通过 IPC 委托独立 resolver 进程解析，`--program` 必须匹配实际发送
+UDP 请求的进程。该功能不会接管 IPv6 DNS、DoH 或 DoT。
+
 ### 示例：Antigravity CLI
 
 有些 CLI 工具无法通过环境变量代理自己的流量。例如，Antigravity CLI 的流量由名为 `agy` 的进程发起，以 root 身份运行 `beap`，并把 `agy` 的 TCP 流量转发到本地 `1091` 端口上的 SOCKS5 代理。使用 `--program agy` 代理 Antigravity CLI 进程：
@@ -139,6 +162,7 @@ docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
 -socks5-addr 192.168.110.32:1091
                                SOCKS5 代理地址
 -program agy                  需要代理的进程名；代理多个程序时重复传入
+-dns-addr 127.0.0.1:1053       可选的 IPv4 UDP DNS 重定向地址；默认禁用
 -f                            预留给未来的配置文件功能
 -v                            显示构建版本信息
 ```
@@ -153,7 +177,8 @@ docker rm -f beap 2>/dev/null || true; docker run --pull=always -d \
 
 ## 限制
 
-- 仅支持 IPv4 TCP；尚未实现 UDP 和 IPv6 connect 重定向。
+- 通用代理仅支持 IPv4 TCP；尚未实现通用 UDP 和 IPv6 重定向。
+- 可选 DNS 重定向仅支持 IPv4 UDP/53；DNS TCP 流量仍走现有 TCP 代理逻辑。
 - 尚未实现 SOCKS5 用户名/密码认证。
 - 进程选择基于命令名，不基于 PID 或 cgroup 成员关系。
 - 已存在的连接不会受影响；只有新的 `connect(2)` 调用可以被重定向。

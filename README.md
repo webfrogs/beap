@@ -171,7 +171,7 @@ Available flags:
 
 ## Limitations
 
-- IPv4 TCP only; UDP and IPv6 connect redirection are not implemented.
+- General proxying supports IPv4 TCP only; general UDP and IPv6 redirection are not implemented. Optional IPv4 UDP DNS redirection is described below.
 - SOCKS5 username/password authentication is not implemented.
 - Process selection is based on command name, not PID or cgroup membership.
 - Existing connections are not affected; only new `connect(2)` calls can be
@@ -180,3 +180,33 @@ Available flags:
 ## License
 
 MIT
+
+## Optional UDP DNS redirection
+
+```sh
+sudo beap --program agy --socks5-addr 127.0.0.1:1091 --dns-addr 127.0.0.1:1053
+```
+
+`--dns-addr` accepts a literal unicast IPv4 address and a nonzero port serving
+UDP DNS. It redirects selected processes' IPv4 UDP/53 requests, including
+loopback requests, using connect/sendmsg hooks and restores reply addresses and
+`getpeername()` results. The proxy process is excluded. These requests go directly
+to the configured DNS service; they do not use SOCKS5 or DNS over TCP.
+Omitting the option preserves existing behavior and skips loading additional DNS
+programs and maps. TCP DNS continues through the existing TCP proxy path.
+
+One original DNS endpoint is pinned per socket, with automatic cleanup on socket
+close. Requests to other DNS endpoints on that socket pass through unchanged to
+avoid misattributing concurrent or delayed responses. Requests already addressed
+to the configured service pass through; do not mix those with redirected requests
+on the same socket, since address hooks cannot distinguish their replies.
+If an application delegates resolution over IPC, process selection must match the
+resolver that actually sends UDP requests. IPv6 DNS, DoH and DoT are not handled.
+
+Kernel integration tests (root and writable cgroup v2 required):
+
+```sh
+sudo go test ./tests -run TestDNSRedirect -v
+```
+
+The test attaches hooks only to a temporary cgroup containing the test process.

@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"net/netip"
 	"os"
 	"os/signal"
 	"runtime"
@@ -50,12 +52,27 @@ func run() error {
 		return fmt.Errorf("load tproxy.o spec: %w", err)
 	}
 
+	// Do not load optional programs (or require their helper support) when off.
+	if !config.Data.DNSAddr.IsValid() {
+		delete(spec.Programs, "cg_dns_connect4")
+		delete(spec.Programs, "cg_dns_sendmsg4")
+		delete(spec.Programs, "cg_dns_recvmsg4")
+		delete(spec.Programs, "cg_dns_getpeername4")
+		delete(spec.Maps, "map_dns_target")
+		delete(spec.Maps, "map_dns_original")
+	}
 	coll, err := ebpf.NewCollection(spec)
 	if err != nil {
 		return fmt.Errorf("load tproxy.o into kernel: %w", err)
 	}
 	defer coll.Close()
 
+	if config.Data.DNSAddr.IsValid() {
+		if err := writeDNSTarget(coll, config.Data.DNSAddr); err != nil {
+			return err
+		}
+		log.Printf("UDP DNS redirect: %s", config.Data.DNSAddr)
+	}
 	if err := writeProxyTGID(coll); err != nil {
 		return err
 	}
@@ -151,6 +168,22 @@ func checkSocks5Proxy(addr string) error {
 	return nil
 }
 
+// Use byte arrays to preserve network byte order independently of host endian.
+func writeDNSTarget(coll *ebpf.Collection, addr netip.AddrPort) error {
+	target, ok := coll.Maps["map_dns_target"]
+	if !ok {
+		return fmt.Errorf("missing eBPF map map_dns_target")
+	}
+	var value [8]byte
+	ip := addr.Addr().As4()
+	copy(value[:4], ip[:])
+	binary.BigEndian.PutUint16(value[4:6], addr.Port())
+	if err := target.Update(uint32(0), value, ebpf.UpdateAny); err != nil {
+		return fmt.Errorf("write DNS redirect address: %w", err)
+	}
+	return nil
+}
+
 func writeTproxyPort(coll *ebpf.Collection, port uint16) error {
 	tproxyPort, ok := coll.Maps["map_tproxy_port"]
 	if !ok {
@@ -226,6 +259,17 @@ func attachTproxyPrograms(coll *ebpf.Collection, cgroupPath string) ([]link.Link
 		{name: "cg_getsockopt", attach: ebpf.AttachCGroupGetsockopt},
 	}
 
+	if config.Data.DNSAddr.IsValid() {
+		programs = append(programs, []struct {
+			name   string
+			attach ebpf.AttachType
+		}{
+			{name: "cg_dns_connect4", attach: ebpf.AttachCGroupInet4Connect},
+			{name: "cg_dns_sendmsg4", attach: ebpf.AttachCGroupUDP4Sendmsg},
+			{name: "cg_dns_recvmsg4", attach: ebpf.AttachCGroupUDP4Recvmsg},
+			{name: "cg_dns_getpeername4", attach: ebpf.AttachCgroupInet4GetPeername},
+		}...)
+	}
 	links := make([]link.Link, 0, len(programs))
 	for _, program := range programs {
 		prog, ok := coll.Programs[program.name]
